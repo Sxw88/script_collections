@@ -1,7 +1,7 @@
 # This script sends an email through Outlook
 # It creates a C# COM object to send the email, and then deletes the email
 
-$version = 6
+$version = 7
 
 # mailserver FQDN
 $mailserver = "mail.server.com"
@@ -31,6 +31,16 @@ function Write-Log {
 	& Write-Output "$(Get-TimeStamp) [$LogLvl] $LogMsg" | Tee-Object -Append -FilePath $PSScriptRoot\Output.log | Write-Host
 }
 
+function Invoke-SetProperty {
+    # Auxiliar function to set properties. The SendUsingAccount property wouldn't be set in a different way
+    param(
+        [__ComObject] $Object,
+        [String] $Property,
+        $Value 
+    )
+    [Void] $Object.GetType().InvokeMember($Property,"SetProperty",$NULL,$Object,$Value)
+}
+
 # Check if SMTP server is reachable
 Write-Log -LogLvl INFO -LogMsg "=== Running Outlook Automail Script version <$version> ==="
 Write-Log -LogLvl INFO -LogMsg "Checking connection to Mail Server ..."
@@ -52,6 +62,7 @@ Write-Log -LogLvl INFO -LogMsg "Mail Server is reachable - proceed to send mail"
 Write-Log -LogLvl DEBUG -LogMsg "Creating Outlook Mail Object"
 try {
 	$outlook = New-Object -ComObject Outlook.Application
+	
 	$email = $outlook.CreateItem(0)
 	
 	# Loop through the accounts and find the target email account
@@ -68,15 +79,34 @@ try {
 	}
 	
 	if ($targetAccount -ne $null) {
-	
+		
 		Write-Log -LogLvl INFO -LogMsg "Getting the user's Sent Items folder"
-		$sentItems = $outlook.Session.GetDefaultFolder(5)
+		$sentItems = $null
+		$_sentItems = $outlook.Session.GetDefaultFolder(5)
+		$folders = $_sentItems.folders
+		foreach ($folder in $folders) {
+			if ($folder.StoreID -eq $targetAccount.DeliveryStoreID) {
+				$sentItems = $folder
+				Write-Log -LogLvl INFO -LogMsg "Found the Sent Items folder"
+			}
+		}
+			
 		Write-Log -LogLvl INFO -LogMsg "Getting the user's Deleted Items folder"
-		$deletedItems = $outlook.Session.GetDefaultFolder(3)
+		$deletedItems = $null
+		$_deletedItems = $outlook.Session.GetDefaultFolder(3)
+		$folders = $_deletedItems.folders
+		foreach ($folder in $folders) {
+			if ($folder.StoreID -eq $targetAccount.DeliveryStoreID) {
+				$deletedItems = $folder
+				Write-Log -LogLvl INFO -LogMsg "Found the Deleted Items folder"
+			}
+		}
 		
 		$email.To = $TO
 		$email.Subject = $SUBJECT
 		$email.Body = $BODY
+		#$email.SendUsingAccount = $targetAccount
+		Invoke-SetProperty -Object $email -Property "SendUsingAccount" -Value $targetAccount
 		
 		### TODO: Check if $ATTACHMENTS exists before sending
 		#$email.Attachments.Add($ATTACHMENTS)
@@ -92,7 +122,7 @@ try {
 		Write-Log -LogLvl DEBUG -LogMsg "$sentCount matching emails found in Sent Items folder"
 		
 		# Sending email
-		Write-Log -LogLvl INFO -LogMsg "Sending e-mail to target destination $To"
+		Write-Log -LogLvl INFO -LogMsg "Sending e-mail to target destination: $To"
 		$email.Send()
 		
 		# After sending email, check again to make sure email is in Sent Items folder
@@ -147,6 +177,10 @@ try {
 				}
 			}
 		}
+		
+		# Log off the Account
+		$namespace.Logoff()
+		
 	} else {
 		Write-Log -LogLvl ERROR -LogMsg "Failed to find Email Account: $targetEmail"
 	}
