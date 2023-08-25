@@ -1,14 +1,12 @@
 # This script sends an email through Outlook
 # It creates a C# COM object to send the email, and then deletes the email
 
-$version = 7
+$version = 8
 
-# mailserver FQDN
+# mailserver FQDN - to test connection to SMTP server before sending
 $mailserver = "mail.server.com"
-# SMTP Port Number
+# SMTP Port Number - to test connection to SMTP server before sending
 $mailport = 888
-# Your Email Account
-$targetEmail = "user.name@webmail.com"
 
 # Recipient
 $TO = "receipient.name@webmail.com"
@@ -64,68 +62,46 @@ try {
 	$outlook = New-Object -ComObject Outlook.Application
 	
 	$email = $outlook.CreateItem(0)
+		
+	Write-Log -LogLvl INFO -LogMsg "Getting the user's Sent Items folder"
+	$sentItems = $outlook.Session.GetDefaultFolder(5)
+		
+	Write-Log -LogLvl INFO -LogMsg "Getting the user's Deleted Items folder"
+	$deletedItems = $outlook.Session.GetDefaultFolder(3)
 	
-	# Loop through the accounts and find the target email account
-	$targetAccount = $null
-	foreach ($account in $outlook.Session.Accounts) {
-		$accountName = $account.SmtpAddress
-		
-		Write-Log -LogLvl DEBUG -LogMsg "Discovered Email Account: $accountName"
-		
-		if ($accountName -eq $targetEmail) {
-			$targetAccount = $account
-			Write-Log -LogLvl INFO -LogMsg "Matching target account discovered: $accountName"
+	#Invoke-SetProperty -Object $email -Property "SendUsingAccount" -Value $targetAccount
+	$email.To = $TO
+	$email.Subject = $SUBJECT
+	$email.Body = $BODY
+	
+	### TODO: Check if $ATTACHMENTS exists before sending
+	#$email.Attachments.Add($ATTACHMENTS)
+	
+	# Before sending the email check Sent Items folder for matching emails
+	$sentCount = 0
+	foreach ($emailItem in $sentItems.Items) {
+		# Check if the email subject contains the match string and it is a sent email
+		if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
+			$sentCount = $sentCount + 1
+		}
+	}
+	Write-Log -LogLvl DEBUG -LogMsg "$sentCount matching emails found in Sent Items folder"
+	
+	# Sending email
+	Write-Log -LogLvl INFO -LogMsg "Sending e-mail to target destination: $To"
+	$email.Send()
+	
+	# After sending email, check again to make sure email is in Sent Items folder
+	$sentCount2 = 0
+	foreach ($emailItem in $sentItems.Items) {
+		# Check if the email subject contains the match string and it is a sent email
+		if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
+			$sentCount2 = $sentCount2 + 1
 		}
 	}
 	
-	if ($targetAccount -ne $null) {
-		
-		Write-Log -LogLvl INFO -LogMsg "Getting the user's Sent Items folder"
-		$sentItems = $null
-		$_sentItems = $outlook.Session.GetDefaultFolder(5)
-		$folders = $_sentItems.folders
-		foreach ($folder in $folders) {
-			if ($folder.StoreID -eq $targetAccount.DeliveryStoreID) {
-				$sentItems = $folder
-				Write-Log -LogLvl INFO -LogMsg "Found the Sent Items folder"
-			}
-		}
-			
-		Write-Log -LogLvl INFO -LogMsg "Getting the user's Deleted Items folder"
-		$deletedItems = $null
-		$_deletedItems = $outlook.Session.GetDefaultFolder(3)
-		$folders = $_deletedItems.folders
-		foreach ($folder in $folders) {
-			if ($folder.StoreID -eq $targetAccount.DeliveryStoreID) {
-				$deletedItems = $folder
-				Write-Log -LogLvl INFO -LogMsg "Found the Deleted Items folder"
-			}
-		}
-		
-		$email.To = $TO
-		$email.Subject = $SUBJECT
-		$email.Body = $BODY
-		#$email.SendUsingAccount = $targetAccount
-		Invoke-SetProperty -Object $email -Property "SendUsingAccount" -Value $targetAccount
-		
-		### TODO: Check if $ATTACHMENTS exists before sending
-		#$email.Attachments.Add($ATTACHMENTS)
-		
-		# Before sending the email check Sent Items folder for matching emails
-		$sentCount = 0
-		foreach ($emailItem in $sentItems.Items) {
-			# Check if the email subject contains the match string and it is a sent email
-			if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
-				$sentCount = $sentCount + 1
-			}
-		}
-		Write-Log -LogLvl DEBUG -LogMsg "$sentCount matching emails found in Sent Items folder"
-		
-		# Sending email
-		Write-Log -LogLvl INFO -LogMsg "Sending e-mail to target destination: $To"
-		$email.Send()
-		
-		# After sending email, check again to make sure email is in Sent Items folder
+	while ($sentCount -ge $sentCount2) {
+		# Count matching emails in the Sent Items folder again
 		$sentCount2 = 0
 		foreach ($emailItem in $sentItems.Items) {
 			# Check if the email subject contains the match string and it is a sent email
@@ -133,58 +109,41 @@ try {
 				$sentCount2 = $sentCount2 + 1
 			}
 		}
-		
-		while ($sentCount -ge $sentCount2) {
-			# Count matching emails in the Sent Items folder again
-			$sentCount2 = 0
-			foreach ($emailItem in $sentItems.Items) {
-				# Check if the email subject contains the match string and it is a sent email
-				if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
-					$sentCount2 = $sentCount2 + 1
-				}
-			}
-			Write-Log -LogLvl DEBUG -LogMsg "$sentCount2 matching emails found in Sent Items folder"
-			# Sleep for 5 seconds and try again if email has not been sent
-			Start-Sleep -Seconds 5
-		}
-		
-		# Loop through each email in the Sent Items folder
-		foreach ($emailItem in $sentItems.Items) {
-			
-			# Check if the email subject contains the match string and it is a sent email
-			if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
-				Write-Log -LogLvl WARN -LogMsg "Email found in Sent Items folder, Deleting 1 email ..."
-				try {
-					$emailItem.Delete() # Delete the email
-				} catch {
-					Write-Log -LogLvl ERROR -LogMsg "Failed to delete email in Sent Items folder"
-					Write-Log -LogLvl ERROR -LogMsg "$_"
-				}
-			}
-		}
-		
-		# Loop through each email in the Deleted Items folder
-		foreach ($emailItem in $deletedItems.Items) {
-			
-			# Check if the email subject contains the match string and it is a sent email
-			if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
-				Write-Log -LogLvl WARN -LogMsg "Email found in Deleted Items folder, Deleting 1 email ..."
-				try {
-					$emailItem.Delete() # Delete the email
-				} catch {
-					Write-Log -LogLvl ERROR -LogMsg "Failed to delete email in Deleted Items folder"
-					Write-Log -LogLvl ERROR -LogMsg "$_"
-				}
-			}
-		}
-		
-		# Log off the Account
-		$namespace.Logoff()
-		
-	} else {
-		Write-Log -LogLvl ERROR -LogMsg "Failed to find Email Account: $targetEmail"
+		Write-Log -LogLvl DEBUG -LogMsg "$sentCount2 matching emails found in Sent Items folder"
+		# Sleep for 5 seconds and try again if email has not been sent
+		Start-Sleep -Seconds 5
 	}
 	
+	# Loop through each email in the Sent Items folder
+	foreach ($emailItem in $sentItems.Items) {
+		
+		# Check if the email subject contains the match string and it is a sent email
+		if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
+			Write-Log -LogLvl WARN -LogMsg "Email found in Sent Items folder, Deleting 1 email ..."
+			try {
+				$emailItem.Delete() # Delete the email
+			} catch {
+				Write-Log -LogLvl ERROR -LogMsg "Failed to delete email in Sent Items folder"
+				Write-Log -LogLvl ERROR -LogMsg "$_"
+			}
+		}
+	}
+	
+	# Loop through each email in the Deleted Items folder
+	foreach ($emailItem in $deletedItems.Items) {
+		
+		# Check if the email subject contains the match string and it is a sent email
+		if ($emailItem.Subject -like "*$Subject*" -and $emailItem.Sent) {
+			Write-Log -LogLvl WARN -LogMsg "Email found in Deleted Items folder, Deleting 1 email ..."
+			try {
+				$emailItem.Delete() # Delete the email
+			} catch {
+				Write-Log -LogLvl ERROR -LogMsg "Failed to delete email in Deleted Items folder"
+				Write-Log -LogLvl ERROR -LogMsg "$_"
+			}
+		}
+	}
+			
 	# Clean up the Outlook application object
 	[System.Runtime.Interopservices.Marshal]::ReleaseComObject($outlook) | Out-Null
 	Remove-Variable outlook
