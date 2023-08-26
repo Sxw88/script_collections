@@ -1,2 +1,2 @@
-# powershell_collections
-A collection of useful powershell scripts
+# script_collections
+A collection of useful scripts
