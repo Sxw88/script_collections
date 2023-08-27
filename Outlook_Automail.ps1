@@ -1,12 +1,13 @@
 # This script sends an email through Outlook
-# It creates a C# COM object to send the email, and then deletes the email
+# It creates a C# COM object to send the email, 
+# and then deletes the email from the Sent Items & Deleted Items folders
 
-$version = 8
+$version = 9
 
 # mailserver FQDN - to test connection to SMTP server before sending
-$mailserver = "mail.server.com"
+$mailserver = "smtp.gmail.com"
 # SMTP Port Number - to test connection to SMTP server before sending
-$mailport = 888
+$mailport = 465
 
 # Recipient
 $TO = "receipient.name@webmail.com"
@@ -14,7 +15,7 @@ $TO = "receipient.name@webmail.com"
 $SUBJECT = "Automated Email | Please Ignore" 
 $BODY = "Test Mail sent from Powershell"
 
-# Attachments (if any)
+# Attachments (if any - leave as default if none)
 $ATTACHMENTS = "C:\Users\User\Downloads\test.txt"
 
 function Get-TimeStamp {
@@ -75,7 +76,13 @@ try {
 	$email.Body = $BODY
 	
 	### TODO: Check if $ATTACHMENTS exists before sending
-	#$email.Attachments.Add($ATTACHMENTS)
+	if (Test-Path $ATTACHMENTS -PathType Leaf) {
+	    Write-Log -LogLvl INFO -LogMsg "Attachment file exists at $ATTACHMENTS"
+	    $email.Attachments.Add($ATTACHMENTS)
+	} else {
+	    Write-Log -LogLvl WARN -LogMsg "Attachment file could not be found at $ATTACHMENTS"
+	}
+	
 	
 	# Before sending the email check Sent Items folder for matching emails
 	$sentCount = 0
