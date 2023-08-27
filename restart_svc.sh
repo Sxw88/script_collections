@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Bash script to restart a service. 
+# Run a cronjob to schedule the script 
+# and it should restart the service (line 14) 
+# and keep logs at specified location (line 9)
+
 service="servicename.service"
 log_file="/path/to/restart_svc.log"
 
