@@ -1,3 +1,5 @@
+# Lists out the disk volumes mounted on a Windows computer
+
 $directoryPath = "C:\Temp\"
 
 if (-not (Test-Path -Path $directoryPath -PathType Container)) {
