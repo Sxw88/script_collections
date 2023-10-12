@@ -1,3 +1,6 @@
+# Creates a message text box using powershell
+# Works best if deployed remotely
+
 $MessageDef = @"
 using System;
 using System.Runtime.InteropServices;
