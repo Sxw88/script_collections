@@ -1,4 +1,5 @@
 # Lists out the disk volumes mounted on a Windows computer
+# Works best if deployed through a remote shell
 
 $directoryPath = "C:\Temp\"
 
