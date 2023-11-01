@@ -2,7 +2,26 @@
 # This script writes and deploys script A.8, and creates a scheduled task
 # !!WARNING: This script will wipe all data on the deployed computer!!
 
-# Save script A.8 to a file
+# Logs and relevant scripts will be stored under this directory
+$directoryPath = "C:\Temp\"
+
+function Get-TimeStamp {
+	Get-Date -Format "dd/MM/yyyy H:mm:ss"
+}
+
+function Write-Log {
+	param (
+		$LogMsg = " - "
+	)
+	
+	$LogFilePath = $directoryPath
+
+  # Writes to log for debugging in case it fails
+	& Write-Output "$(Get-TimeStamp) $LogMsg" | Tee-Object -Append -FilePath $LogFilePath\RemoteWipe.log | Write-Host
+	# Echoes in the case of remote deployment feedback
+  echo "$(Get-TimeStamp) $LogMsg"
+}
+
 $scriptA8Content = @'
 # Script A.8
 # This script triggers a remote wipe on the target system
@@ -19,24 +38,42 @@ $params.Add($param)
 
 $instance = Get-CimInstance -Namespace $namespaceName -ClassName $className -Filter "ParentID='./Vendor/MSFT' and InstanceID='RemoteWipe'"
 $session.InvokeMethod($namespaceName, $instance, $methodName, $params)
-
 '@
 
-New-Item -ItemType Directory -Path "C:\\A8"
-$scriptA7Content | Set-Content -Path "C:\\A8\\A.8.ps1" -Force
-echo "Script A.8 has been saved to C:\\A8\\A.8.ps1."
+if (-not (Test-Path -Path $directoryPath -PathType Container)) {
+    New-Item -Path $directoryPath -ItemType Directory
+    echo "Directory created: $directoryPath"
+} else {
+    echo "Directory already exists: $directoryPath"
+}
 
-$taskName = "ScriptC4Task"
-$taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 30)
-$taskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument '/c start /min "" PowerShell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\A8\A.8.ps1'
-$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
+cd $directoryPath
 
-echo "Registering scheduled task '$taskName' to run payload script A.8 every 30 minutes."
+$lockPath = $directoryPath + "c4.lock" # Location of the failsafe
 
-Register-ScheduledTask -TaskName $taskName -Trigger $taskTrigger -Action $taskAction -Settings $taskSettings -User "SYSTEM" -RunLevel Highest -Force
+if (-not (Test-Path -Path $lockPath -PathType Leaf)) {
+  Write-Log "Lock File Does Not Exist - Deploying Remote Wiping Script"
+	New-Item -ItemType File -Path "$($lockPath)" # Creating the failsafe lock file
+	
+	$scriptA8Content | Set-Content -Path "C:\\FalconTemp\\A.8.ps1" -Force
+	Write-Log "Script A.8 has been saved to C:\\FalconTemp\\A.8.ps1."
 
-echo "Enabling Scheduled Task Now."
+  # Create Scheduled Task for persistence
+	$taskName = "ScriptC4Task"
+	$taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
+	$taskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument '/c start /min "" PowerShell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\FalconTemp\A.8.ps1'
+	$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
 
-schtasks /run /tn "ScriptC4Task"
+	Write-Log "Registering scheduled task '$taskName' to run payload script A.8 every 15 minutes."
 
-echo "Script C.4 has completed running."
+  # Enabling the Scheduled Task
+	Register-ScheduledTask -TaskName $taskName -Trigger $taskTrigger -Action $taskAction -Settings $taskSettings -User "SYSTEM" -RunLevel Highest -Force
+	Write-Log "Enabling Scheduled Task Now."
+
+  # Trigger Scheduled Task immediately
+	schtasks /run /tn "ScriptC4Task"
+	Write-Log "Script C.4 has completed running."
+	
+} else {
+    echo "Lock File already exists: $lockPath"
+}
