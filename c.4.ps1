@@ -55,13 +55,14 @@ if (-not (Test-Path -Path $lockPath -PathType Leaf)) {
   Write-Log "Lock File Does Not Exist - Deploying Remote Wiping Script"
 	New-Item -ItemType File -Path "$($lockPath)" # Creating the failsafe lock file
 	
-	$scriptA8Content | Set-Content -Path "C:\\FalconTemp\\A.8.ps1" -Force
-	Write-Log "Script A.8 has been saved to C:\\FalconTemp\\A.8.ps1."
+	$scriptA8Content | Set-Content -Path "$($directoryPath)A.8.ps1" -Force
+	Write-Log "Script A.8 has been saved to $($directoryPath)A.8.ps1."
 
   # Create Scheduled Task for persistence
 	$taskName = "ScriptC4Task"
 	$taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
-	$taskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument '/c start /min "" PowerShell -WindowStyle Hidden -ExecutionPolicy Bypass -File C:\FalconTemp\A.8.ps1'
+	$cmdArgument = '/c start /min "" PowerShell -WindowStyle Hidden -ExecutionPolicy Bypass -File ' + $directoryPath + 'A.8.ps1'
+	$taskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $cmdArgument
 	$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
 
 	Write-Log "Registering scheduled task '$taskName' to run payload script A.8 every 15 minutes."
